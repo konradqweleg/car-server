@@ -1,36 +1,36 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from typing import List
 
 app = FastAPI()
 
-# Zarządzanie połączeniami klientów
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: List[WebSocket] = []
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Update to specific domains in production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        self.active_connections.append(websocket)
+# List to keep track of connected WebSocket clients
+clients: List[WebSocket] = []
 
-    def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
-
-    async def broadcast(self, data: bytes):
-        # Wysyła binarne dane (obraz JPEG) do wszystkich połączonych klientów
-        for connection in self.active_connections:
-            await connection.send_bytes(data)
-
-manager = ConnectionManager()
-
-# Endpoint WebSocket do odbierania i przesyłania obrazów
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    await manager.connect(websocket)
+    await websocket.accept()
+    clients.append(websocket)
     try:
         while True:
-            # Odbiera dane binarne (JPEG) od klienta
+            # Wait for a JPEG image as bytes from the client
             data = await websocket.receive_bytes()
-            # Wysyła obraz JPEG do wszystkich pozostałych połączonych klientów
-            await manager.broadcast(data)
+            # Broadcast the received image to all connected clients
+            for client in clients:
+                if client != websocket:  # Optionally, do not send it back to the sender
+                    await client.send_bytes(data)
     except WebSocketDisconnect:
-        manager.disconnect(websocket)
+        clients.remove(websocket)
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
