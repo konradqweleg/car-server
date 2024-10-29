@@ -4,32 +4,73 @@ from typing import List
 
 app = FastAPI()
 
-# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Update to specific domains in production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# List to keep track of connected WebSocket clients
-clients: List[WebSocket] = []
+
+general_clients: List[WebSocket] = []
+driver_clients: List[WebSocket] = []
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    clients.append(websocket)
+    general_clients.append(websocket)
     try:
         while True:
-            # Wait for a JPEG image as bytes from the client
             data = await websocket.receive_bytes()
-            # Broadcast the received image to all connected clients
-            for client in clients:
-                if client != websocket:  # Optionally, do not send it back to the sender
+            for client in general_clients:
+                if client != websocket:
                     await client.send_bytes(data)
     except WebSocketDisconnect:
-        clients.remove(websocket)
+        general_clients.remove(websocket)
+
+@app.websocket("/check-ip")
+async def client_check_server_ip(websocket: WebSocket):
+    await websocket.accept()
+    client_ip = websocket.client[0]
+    response_message = f"Your client IP address is: {client_ip}"
+    await websocket.send_text(response_message)
+    await websocket.close()
+
+@app.websocket("/driver")
+async def driver(websocket: WebSocket):
+    await websocket.accept()
+    driver_clients.append(websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            print(f"Otrzymano polecenie: {data}")
+
+            for client in driver_clients:
+                if client != websocket:
+                    await client.send_text(data)
+    except WebSocketDisconnect:
+        driver_clients.remove(websocket)
+
+@app.websocket("/banan")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    general_clients.append(websocket)
+    try:
+        while True:
+
+            data = await websocket.receive_bytes()
+
+            filename = f"imageBanan.jpeg"
+            with open(filename, "wb") as f:
+                f.write(data)
+
+
+            for client in general_clients:
+                if client != websocket:
+                    await client.send_bytes(data)
+    except WebSocketDisconnect:
+        general_clients.remove(websocket)
 
 if __name__ == "__main__":
     import uvicorn
